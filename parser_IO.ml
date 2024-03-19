@@ -19,6 +19,6 @@ let implode l =
   let (n, f) = word l in
     String.init n f  
 
-let doParse (s : string) : (int * string) list = 
+let doParse (s : string) : (float * string) list = 
   let xs = apply (Lazy.force expr) (explode s) in
     List.map (fun (n, cs) -> (n, implode cs)) xs

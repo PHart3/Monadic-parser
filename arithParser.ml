@@ -1,6 +1,7 @@
 
 (* A monadic parser for closed arithmetic powressions in a
- * signature extended with sub, div, and pow operations *)
+ * signature extended with sub, div, pow, and additive 
+ * inverse operations *)
 
 open ParserMon.Parsing
 
@@ -56,32 +57,24 @@ let chainr (p1 : 'a parse) (p2 : ('a -> 'a -> 'a) parse) : 'a parse =
 
 exception Error of string
 
-let rec pow (n : int) (m : int) : int =
-  if m = 0 then 1
-  else if m = 1 then n
-  else if m > 1 then
-    let p = (pow n (m / 2)) in
-      if m mod 2  = 0 then  p * p
-      else p * p * n
-  else raise (Error "Negative powers not allowed")
-
-let digitConv (c : char) : int =
-  if c = '0' then 0
-  else if c = '1' then 1 
-  else if c = '2' then 2  
-  else if c = '3' then 3
-  else if c = '4' then 4 
-  else if c = '5' then 5
-  else if c = '6' then 6 
-  else if c = '7' then 7
-  else if c = '8' then 8
-  else if c = '9' then 9
+let digitConv (c : char) : float =
+  if c = '0' then 0.0
+  else if c = '1' then 1.0 
+  else if c = '2' then 2.0  
+  else if c = '3' then 3.0
+  else if c = '4' then 4.0 
+  else if c = '5' then 5.0
+  else if c = '6' then 6.0 
+  else if c = '7' then 7.0
+  else if c = '8' then 8.0
+  else if c = '9' then 9.0
   else raise (Error "Expected digit here") 
 
-let numbP : int parse =
-  let isDigit = function '0' .. '9' ->  true | _ -> false
-  and sumList xs = List.fold_right (fun y (x, n) -> (x + (digitConv y) * (pow 10 n), n + 1)) 
-    xs (0, 0) in
+let isDigit = function '0' .. '9' ->  true | _ -> false
+
+let numbP : float parse =
+  let sumList xs = List.fold_right 
+    (fun y (x, n) -> (x +. (digitConv y) *. (Float.pow 10.0 (float n)), n + 1)) xs (0.0, 0) in
       let* cs = manyFail (sat (fun c -> isDigit c)) in
         return (fst (sumList cs))  
 
@@ -100,26 +93,32 @@ let apply (pa : 'a parse) (s : stringL) : ('a * stringL) list =
   match (let* _ = space in pa) with
     | Pars p -> p s
 
-let addop : (int -> int -> int) parse = 
+let addop : (float -> float -> float) parse = 
   ( let* _ = symb ['+'] in
-      return Int.add ) +++
+      return (+.) ) +++
   ( let* _ = symb  ['-'] in
-      return Int.sub )
+      return (-.) )
 
-let mulop : (int -> int -> int) parse = 
+let mulop : (float -> float -> float) parse = 
   ( let* _ = symb ['*'] in
-      return Int.mul ) +++
+      return Float.mul ) +++
   ( let* _ = symb  ['/'] in
-      return Int.div ) 
+      return (/.) ) 
 
-let powop : (int -> int -> int) parse = 
+let powop : (float -> float -> float) parse = 
   let* _ = str ['^'] in
-    return pow
+    return Float.pow
 
-let rec expr : (int parse) Lazy.t =
-  let strg = lazy (chainr (Lazy.force factor) powop) in 
-    let term = lazy (chainl (Lazy.force strg) mulop) in
-      lazy (chainl (Lazy.force term) addop)
+let addinv (pa : float parse) : float parse =
+  let* _ = sat (fun c -> c = '~') in
+  let* n = pa in
+    return (Float.neg n)
+
+let rec expr : (float parse) Lazy.t =
+  let minus = lazy ((addinv (Lazy.force factor)) +++ (Lazy.force factor)) in
+    let strg = lazy (chainr (Lazy.force minus) powop) in 
+      let term = lazy (chainl (Lazy.force strg) mulop) in
+        lazy (chainl (Lazy.force term) addop)
 and factor = lazy ( 
   (token numbP) +++ (
     let* _ = symb ['('] in
